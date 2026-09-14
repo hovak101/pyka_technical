@@ -7,12 +7,23 @@
 #include <filesystem>
 #include <deque>
 #include <algorithm>
+#include <cmath>
 #include "filter.h"
 
 namespace fs = std::filesystem;
 
 // Number of recent readings each altimeter's median is computed over.
-constexpr size_t WINDOW_SIZE = 125;
+constexpr size_t WINDOW_SIZE = 5;
+
+// Assumed ground speed and max terrain slope, used to bound how fast the
+// estimated ground level is allowed to rise (R = v_ground * tan(theta_max)).
+constexpr double V_GROUND = 50.0;      // m/s
+constexpr double THETA_MAX_DEG = 10.0; // degrees
+constexpr double PI = 3.14159265358979323846;
+const double R = V_GROUND * std::tan(THETA_MAX_DEG * PI / 180.0); // m/s
+
+// Sample interval.
+constexpr double DT = 0.01; // s
 
 // Median of a window's current contents (uses whatever is available if not yet full).
 double median(const std::deque<double>& window) {
@@ -50,6 +61,8 @@ void processFile(const fs::path& inPath, const fs::path& outPath, size_t windowS
     Filter f(0.95);
     std::deque<double> a1Window;
     std::deque<double> a2Window;
+    double ghat = 0.0;
+    bool firstSample = true;
     outputFile << "altitude_estimate" << std::endl;
 
     std::string line;
@@ -70,10 +83,20 @@ void processFile(const fs::path& inPath, const fs::path& outPath, size_t windowS
 
         pushToWindow(a1Window, a1, windowSize);
         pushToWindow(a2Window, a2, windowSize);
-        double avgAlt = (median(a1Window) + median(a2Window)) / 2.0;
+        double maxAlt = std::max(median(a1Window), median(a2Window));
+        double g = gps - maxAlt;
 
-        double filtered = f.correct(gps - avgAlt);
-        double altitude = gps - filtered;
+        if (firstSample) {
+            ghat = g;
+            firstSample = false;
+        } else if (g < ghat) {
+            ghat = g;
+        } else {
+            ghat = std::min(g, ghat + R * DT);
+        }
+
+        double s = f.correct(ghat);
+        double altitude = gps - s;
         if (altitude < 0) {
             altitude = 0;
         }
