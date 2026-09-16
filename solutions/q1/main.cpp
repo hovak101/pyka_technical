@@ -22,7 +22,7 @@ constexpr double THETA_MAX_DEG = 10.0; // degrees
 constexpr double PI = 3.14159265358979323846;
 const double R = V_GROUND * std::tan(THETA_MAX_DEG * PI / 180.0); // m/s
 
-// Sample interval.
+// timestamp length.
 constexpr double DT = 0.01; // s
 
 // Median of a window's current contents (uses whatever is available if not yet full).
